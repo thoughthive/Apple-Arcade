@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apple Arcade 🍎</title>
+
+<meta name="description" content="Apple Arcade — eat apples, dodge chillies, and celebrate your score with confetti bursts!">
+<meta name="theme-color" content="#007aff">
+<meta property="og:title" content="Apple Arcade 🍎">
+<meta property="og:description" content="Beautiful Apple-style browser arcade game with joystick, keyboard, and confetti celebration.">
+<meta property="og:type" content="game">
+<link rel="canonical" href="https://example.com/apple-arcade">
+<link rel="sitemap" type="application/xml" title="Sitemap" href="data:application/xml,
+<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>
+  <url><loc>https://example.com/apple-arcade</loc><priority>1.0</priority></url>
+</urlset>">
+
+<style>
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: linear-gradient(135deg, #001F3F 0%, #007AFF 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+  color: white;
+}
+
+canvas { display: block; }
+
+#startScreen {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: linear-gradient(145deg, #0a0f25, #031a3d);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: white;
+  transition: opacity 1s ease;
+}
+
+#title {
+  font-size: 48px;
+  font-weight: 700;
+  color: #b4d9ff;
+  text-shadow: 0 0 20px rgba(0,150,255,0.6);
+  margin-bottom: 40px;
+}
+
+.modeBtn {
+  background: linear-gradient(135deg, #007aff, #00c6ff);
+  color: white;
+  font-size: 20px;
+  border: none;
+  border-radius: 20px;
+  padding: 12px 40px;
+  margin: 12px;
+  cursor: pointer;
+  box-shadow: 0 0 20px rgba(0,122,255,0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.modeBtn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 25px rgba(0,150,255,0.6);
+}
+
+#madeBy {
+  position: absolute;
+  bottom: 25px;
+  text-align: center;
+  width: 100%;
+  font-size: 16px;
+  color: rgba(255,255,255,0.6);
+  font-weight: 400;
+}
+
+#joystick {
+  position: absolute;
+  bottom: 80px;
+  left: 80px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.2);
+  display: none;
+  touch-action: none;
+}
+#stick {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  left: 30px;
+  top: 30px;
+}
+
+#score {
+  position: fixed;
+  top: 15px;
+  right: 20px;
+  font-size: 22px;
+  font-weight: 500;
+  color: #b4d9ff;
+}
+
+.confetti {
+  position: absolute;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  animation: fall 2s linear forwards;
+}
+
+@keyframes fall {
+  0% { opacity: 1; transform: translateY(0) rotate(0deg); }
+  100% { opacity: 0; transform: translateY(100vh) rotate(720deg); }
+}
+</style>
+</head>
+<body>
+
+<div id="startScreen">
+  <div id="title">🍏 Apple Arcade</div>
+  <button class="modeBtn" id="kidsBtn">🧒 Kids Mode</button>
+  <button class="modeBtn" id="menBtn">🧔 Men’s Mode</button>
+  <div id="madeBy">Made with ❤️ by Divyansh</div>
+</div>
+
+<canvas id="game"></canvas>
+<div id="joystick"><div id="stick"></div></div>
+<div id="score">Score: 0</div>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth;
+canvas.height = innerHeight;
+
+const startScreen = document.getElementById("startScreen");
+const kidsBtn = document.getElementById("kidsBtn");
+const menBtn = document.getElementById("menBtn");
+const scoreEl = document.getElementById("score");
+const joystick = document.getElementById("joystick");
+const stick = document.getElementById("stick");
+
+let keys = {};
+let score = 0;
+let inverted = false;
+let gameStarted = false;
+let confettiTimer = null;
+
+// Player
+const player = { x: canvas.width/2, y: canvas.height/2, size: 70, speed: 4, emoji: "😋" };
+
+// Fruits
+let fruits = [];
+const numFruits = 15;
+function generateFruits() {
+  fruits = [];
+  for(let i=0;i<numFruits;i++) {
+    fruits.push({
+      x: Math.random()*canvas.width,
+      y: Math.random()*canvas.height,
+      apple: Math.random() > 0.5
+    });
+  }
+}
+generateFruits();
+
+// 🎮 Keyboard Controls
+window.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+});
+window.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+// 🧭 Move Player
+function movePlayer() {
+  let moveX = 0, moveY = 0;
+
+  if(keys["w"] || keys["arrowup"]) moveY = -1;
+  if(keys["s"] || keys["arrowdown"]) moveY = 1;
+  if(keys["a"] || keys["arrowleft"]) moveX = -1;
+  if(keys["d"] || keys["arrowright"]) moveX = 1;
+
+  if(inverted) { moveX *= -1; moveY *= -1; }
+
+  player.x += moveX * player.speed;
+  player.y += moveY * player.speed;
+
+  // Infinite screen wrapping
+  if(player.x < 0) player.x = canvas.width;
+  if(player.x > canvas.width) player.x = 0;
+  if(player.y < 0) player.y = canvas.height;
+  if(player.y > canvas.height) player.y = 0;
+}
+// 🎉 Confetti Generator
+function spawnConfetti() {
+  for(let i=0; i<200; i++) { // full screen
+    const div = document.createElement("div");
+    div.className = "confetti";
+    div.style.left = Math.random()*100 + "vw";
+    div.style.top = "-10px";
+    div.style.background = `hsl(${Math.random()*360}, 80%, 60%)`;
+    document.body.appendChild(div);
+    setTimeout(()=>div.remove(), 2000);
+  }
+}
+
+// 🍎 Check Collisions
+function checkCollision() {
+  fruits.forEach(f => {
+    const dx = player.x - f.x;
+    const dy = player.y - f.y;
+    const distance = Math.sqrt(dx*dx + dy*dy);
+    if(distance < 50) {
+      if(f.apple) {
+        score += 10;
+      } else {
+        score -= 5;
+      }
+
+      scoreEl.textContent = `Score: ${score}`;
+
+      // 🎉 Century Celebration
+      if(score > 0 && score % 100 === 0) {
+        spawnConfetti();
+      }
+
+      // Respawn fruit
+      f.x = Math.random() * canvas.width;
+      f.y = Math.random() * canvas.height;
+      f.apple = Math.random() > 0.5;
+    }
+  });
+}
+
+// 🍏 Draw Everything
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw player
+  ctx.font = `${player.size}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(player.emoji, player.x, player.y);
+
+  // Draw fruits
+  fruits.forEach(f => {
+    ctx.font = "40px serif";
+    ctx.fillText(f.apple ? "🍎" : "🌶️", f.x, f.y);
+  });
+}
+
+// 🕹️ Joystick Logic
+let touchStart = null;
+function showJoystick(e) {
+  joystick.style.display = "block";
+  touchStart = e.touches[0];
+  joystick.style.left = touchStart.clientX - 60 + "px";
+  joystick.style.top = touchStart.clientY - 60 + "px";
+}
+function moveStick(e) {
+  const touch = e.touches[0];
+  const dx = touch.clientX - touchStart.clientX;
+  const dy = touch.clientY - touchStart.clientY;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const max = 40;
+  const angle = Math.atan2(dy, dx);
+  const limitedDist = Math.min(max, dist);
+  stick.style.left = 30 + Math.cos(angle)*limitedDist + "px";
+  stick.style.top = 30 + Math.sin(angle)*limitedDist + "px";
+
+  let moveX = dx / 40;
+  let moveY = dy / 40;
+  if(inverted) { moveX *= -1; moveY *= -1; }
+
+  player.x += moveX * player.speed;
+  player.y += moveY * player.speed;
+
+  if(player.x < 0) player.x = canvas.width;
+  if(player.x > canvas.width) player.x = 0;
+  if(player.y < 0) player.y = canvas.height;
+  if(player.y > canvas.height) player.y = 0;
+}
+function hideJoystick() {
+  joystick.style.display = "none";
+  stick.style.left = "30px";
+  stick.style.top = "30px";
+}
+
+canvas.addEventListener("touchstart", showJoystick);
+canvas.addEventListener("touchmove", moveStick);
+canvas.addEventListener("touchend", hideJoystick);
+
+// 🎮 Game Loop
+function update() {
+  if(gameStarted){
+    movePlayer();
+    checkCollision();
+    draw();
+  }
+  requestAnimationFrame(update);
+}
+update();
+
+// 🌈 Mode Buttons
+kidsBtn.onclick = () => startGame(false);
+menBtn.onclick = () => startGame(true);
+
+function startGame(isInverted) {
+  inverted = isInverted;
+  startScreen.style.opacity = 0;
+  setTimeout(()=> startScreen.style.display = "none", 1000);
+  gameStarted = true;
+}
+</script>
+</body>
+</html>
